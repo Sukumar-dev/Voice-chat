@@ -101,6 +101,29 @@ h1 {
   border-color: rgba(15, 118, 110, 0.4);
 }
 
+.room-input-row,
+.share-row {
+  display: flex;
+  gap: 12px;
+}
+
+.share-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.share-panel input[readonly] {
+  color: var(--muted);
+  background: rgba(240, 247, 255, 0.9);
+}
+
+.helper-text {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -128,6 +151,11 @@ button:hover:not(:disabled) {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.compact-button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 #join-button {
@@ -208,7 +236,7 @@ button:disabled {
 .participant {
   padding: 18px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
 }
@@ -221,8 +249,11 @@ button:disabled {
   margin: 6px 0 0;
 }
 
-.participant audio {
-  width: 180px;
+.participant-audio {
+  width: min(100%, 220px);
+}
+
+.participant-audio[hidden] {
   display: none;
 }
 
@@ -238,6 +269,11 @@ button:disabled {
 
   .participant {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .room-input-row,
+  .share-row {
     flex-direction: column;
   }
 }

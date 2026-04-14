@@ -16,16 +16,43 @@
         </p>
 
         <form id="join-form" class="controls">
-          <label for="room-input">Room name</label>
-          <input
-            id="room-input"
-            name="room"
-            type="text"
-            maxlength="40"
-            placeholder="demo-room"
-            autocomplete="off"
-            required
-          />
+          <label for="room-input">Room ID</label>
+          <div class="room-input-row">
+            <input
+              id="room-input"
+              name="room"
+              type="text"
+              maxlength="40"
+              placeholder="room-demo12"
+              autocomplete="off"
+              required
+            />
+            <button
+              id="create-room-button"
+              type="button"
+              class="secondary compact-button"
+            >
+              Create Room ID
+            </button>
+          </div>
+
+          <div class="share-panel">
+            <label for="share-link">Invite link</label>
+            <div class="share-row">
+              <input id="share-link" type="text" readonly />
+              <button
+                id="copy-link-button"
+                type="button"
+                class="secondary compact-button"
+              >
+                Copy Link
+              </button>
+            </div>
+            <p class="helper-text">
+              Share this link with the other person. If audio does not start by
+              itself, press Play on that participant card.
+            </p>
+          </div>
 
           <div class="button-row">
             <button id="join-button" type="submit">Join Call</button>
@@ -82,6 +109,7 @@
       src="https://cdn.socket.io/4.8.1/socket.io.min.js"
       crossorigin="anonymous"
     ></script>
+    <script src="./config.js"></script>
     <script src="./script.js"></script>
   </body>
 </html>

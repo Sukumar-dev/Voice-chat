@@ -1,5 +1,6 @@
 const express = require("express");
 const http = require("http");
+const path = require("path");
 const { Server } = require("socket.io");
 
 const PORT = process.env.PORT || 3000;
@@ -12,6 +13,7 @@ const allowedOrigins = process.env.CLIENT_ORIGIN
 
 const app = express();
 const server = http.createServer(app);
+const clientDirectory = path.join(__dirname, "..", "client");
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -21,15 +23,19 @@ const io = new Server(server, {
 
 const socketToRoom = new Map();
 
-app.get("/", (_request, response) => {
-  response.json({
-    name: "voice-chat-signaling-server",
-    status: "running"
-  });
+app.get("/config.js", (_request, response) => {
+  response.type("application/javascript");
+  response.send(`window.VOICE_CHAT_CONFIG = ${JSON.stringify(buildClientConfig())};\n`);
 });
 
 app.get("/health", (_request, response) => {
   response.json({ status: "ok" });
+});
+
+app.use(express.static(clientDirectory));
+
+app.get("/", (_request, response) => {
+  response.sendFile(path.join(clientDirectory, "index.html"));
 });
 
 function emitRoomUserCount(roomId) {
@@ -103,3 +109,59 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
   console.log(`Signaling server listening on http://localhost:${PORT}`);
 });
+
+function buildClientConfig() {
+  const config = {};
+  const signalingServerUrl = trimValue(process.env.PUBLIC_SIGNALING_SERVER_URL);
+  const stunServerUrls = parseCsv(process.env.STUN_SERVER_URLS);
+  const turnServerUrls = parseCsv(process.env.TURN_SERVER_URLS);
+
+  if (signalingServerUrl) {
+    config.signalingServerUrl = stripTrailingSlash(signalingServerUrl);
+  }
+
+  if (stunServerUrls.length > 0 || turnServerUrls.length > 0) {
+    const iceServers = [];
+
+    if (stunServerUrls.length > 0) {
+      iceServers.push({
+        urls: stunServerUrls.length === 1 ? stunServerUrls[0] : stunServerUrls
+      });
+    }
+
+    if (turnServerUrls.length > 0) {
+      const turnServer = {
+        urls: turnServerUrls.length === 1 ? turnServerUrls[0] : turnServerUrls
+      };
+
+      if (process.env.TURN_USERNAME) {
+        turnServer.username = process.env.TURN_USERNAME;
+      }
+
+      if (process.env.TURN_CREDENTIAL) {
+        turnServer.credential = process.env.TURN_CREDENTIAL;
+      }
+
+      iceServers.push(turnServer);
+    }
+
+    config.rtcConfiguration = { iceServers };
+  }
+
+  return config;
+}
+
+function parseCsv(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function trimValue(value) {
+  return String(value || "").trim();
+}
+
+function stripTrailingSlash(value) {
+  return String(value || "").replace(/\/+$/, "");
+}

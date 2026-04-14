@@ -1,16 +1,23 @@
-// Replace this with your deployed backend URL before publishing to GitHub Pages.
-const SIGNALING_SERVER_URL =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1"
-    ? "http://localhost:3000"
-    : "https://voice-chat-7ryk.onrender.com";
+const DEFAULT_REMOTE_SIGNALING_URL = "https://voice-chat-7ryk.onrender.com";
+const DEFAULT_ICE_SERVERS = [
+  {
+    urls: [
+      "stun:stun.l.google.com:19302",
+      "stun:stun1.l.google.com:19302",
+      "stun:stun2.l.google.com:19302"
+    ]
+  }
+];
 
-const RTC_CONFIGURATION = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-};
+const runtimeConfig = window.VOICE_CHAT_CONFIG || {};
+const SIGNALING_SERVER_URL = resolveSignalingServerUrl();
+const RTC_CONFIGURATION = resolveRtcConfiguration();
 
 const joinForm = document.getElementById("join-form");
 const roomInput = document.getElementById("room-input");
+const createRoomButton = document.getElementById("create-room-button");
+const shareLinkInput = document.getElementById("share-link");
+const copyLinkButton = document.getElementById("copy-link-button");
 const joinButton = document.getElementById("join-button");
 const muteButton = document.getElementById("mute-button");
 const leaveButton = document.getElementById("leave-button");
@@ -32,7 +39,9 @@ const peerConnections = new Map();
 const participantCards = new Map();
 const pendingIceCandidates = new Map();
 
-roomInput.value = "demo-room";
+roomInput.value = getInitialRoomId();
+updateShareLink(roomInput.value);
+updateMuteUi();
 
 joinForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -44,11 +53,31 @@ joinForm.addEventListener("submit", async (event) => {
   const roomId = roomInput.value.trim();
 
   if (!roomId) {
-    setStatus("Enter a room name before joining.");
+    setStatus("Create a room ID or type one before joining.");
     return;
   }
 
   await joinRoom(roomId);
+});
+
+roomInput.addEventListener("input", () => {
+  updateShareLink(roomInput.value);
+});
+
+createRoomButton.addEventListener("click", () => {
+  if (socket) {
+    return;
+  }
+
+  roomInput.value = createRoomId();
+  updateShareLink(roomInput.value);
+  roomInput.focus();
+  roomInput.select();
+  setStatus("A new room ID is ready. Share the invite link, then join the call.");
+});
+
+copyLinkButton.addEventListener("click", async () => {
+  await copyInviteLink();
 });
 
 leaveButton.addEventListener("click", async () => {
@@ -94,6 +123,7 @@ async function joinRoom(roomId) {
 
 function connectSocket(roomId) {
   currentRoomId = roomId;
+  updateShareLink(roomId);
   isLeaving = false;
   socket = io(SIGNALING_SERVER_URL, {
     transports: ["websocket", "polling"]
@@ -113,7 +143,7 @@ function registerSocketEvents() {
   socket.on("connect_error", async (error) => {
     console.error("Could not connect to the signaling server:", error);
     await leaveRoom(
-      "Could not reach the signaling server. Update the backend URL in client/script.js and try again."
+      `Could not reach ${SIGNALING_SERVER_URL}. Open the Render URL directly or update client/config.js with the active backend URL.`
     );
   });
 
@@ -245,7 +275,8 @@ function createPeerConnection(userId) {
   };
 
   peerConnection.ontrack = (event) => {
-    attachRemoteStream(userId, event.streams[0]);
+    const stream = event.streams[0] || new MediaStream([event.track]);
+    attachRemoteStream(userId, stream);
   };
 
   peerConnection.onconnectionstatechange = () => {
@@ -253,9 +284,26 @@ function createPeerConnection(userId) {
 
     if (state === "connected") {
       ensureParticipantCard(userId, "Audio live");
+      return;
     }
 
-    if (state === "failed" || state === "closed") {
+    if (state === "disconnected") {
+      ensureParticipantCard(userId, "Reconnecting audio...");
+      return;
+    }
+
+    if (state === "failed") {
+      ensureParticipantCard(
+        userId,
+        "Connection failed. If this keeps happening, add a TURN server."
+      );
+      setStatus(
+        "Audio connected poorly on this network. Add TURN relay settings in client/config.js or Render environment variables if calls still fail."
+      );
+      return;
+    }
+
+    if (state === "closed") {
       removePeer(userId);
     }
   };
@@ -280,13 +328,25 @@ async function startOffer(userId) {
 }
 
 function attachRemoteStream(userId, stream) {
-  const participantCard = ensureParticipantCard(userId, "Audio live");
+  const participantCard = ensureParticipantCard(userId, "Audio ready");
   const audioElement = participantCard.querySelector("audio");
 
   audioElement.srcObject = stream;
-  audioElement
-    .play()
-    .catch((error) => console.error("Audio autoplay was blocked:", error));
+  audioElement.hidden = false;
+  attemptRemotePlayback(userId, audioElement);
+}
+
+async function attemptRemotePlayback(userId, audioElement) {
+  try {
+    await audioElement.play();
+    ensureParticipantCard(userId, "Audio live");
+  } catch (error) {
+    console.error("Audio autoplay was blocked:", error);
+    ensureParticipantCard(userId, "Audio ready. Press play to hear.");
+    setStatus(
+      "A remote stream is ready. If you cannot hear it yet, press Play on that participant card."
+    );
+  }
 }
 
 function ensureParticipantCard(userId, stateText) {
@@ -309,8 +369,16 @@ function ensureParticipantCard(userId, stateText) {
   status.textContent = stateText;
 
   const audio = document.createElement("audio");
+  audio.className = "participant-audio";
   audio.autoplay = true;
+  audio.controls = true;
+  audio.hidden = true;
   audio.playsInline = true;
+  audio.addEventListener("play", () => {
+    if (audio.srcObject) {
+      ensureParticipantCard(userId, "Audio live");
+    }
+  });
 
   info.append(title, status);
   card.append(info, audio);
@@ -333,6 +401,12 @@ function removePeer(userId) {
   const card = participantCards.get(userId);
 
   if (card) {
+    const audioElement = card.querySelector("audio");
+
+    if (audioElement) {
+      audioElement.srcObject = null;
+    }
+
     card.remove();
     participantCards.delete(userId);
   }
@@ -403,6 +477,7 @@ function stopLocalStream() {
 
 function setConnectedUi(isConnected) {
   roomInput.disabled = isConnected;
+  createRoomButton.disabled = isConnected;
   joinButton.disabled = isConnected;
   leaveButton.disabled = !isConnected;
 }
@@ -490,4 +565,104 @@ function handleMediaError(error) {
 
   setStatus("Could not access the microphone.");
   setSelfState("Microphone unavailable");
+}
+
+async function copyInviteLink() {
+  if (!shareLinkInput.value) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(shareLinkInput.value);
+    setStatus("Invite link copied. Send it to the other participant.");
+  } catch (error) {
+    shareLinkInput.focus();
+    shareLinkInput.select();
+    setStatus("Copy failed. The invite link is selected so you can copy it manually.");
+  }
+}
+
+function updateShareLink(roomId) {
+  const trimmedRoomId = String(roomId || "").trim();
+  const shareUrl = new URL(window.location.href);
+
+  if (trimmedRoomId) {
+    shareUrl.searchParams.set("room", trimmedRoomId);
+  } else {
+    shareUrl.searchParams.delete("room");
+  }
+
+  history.replaceState(null, "", `${shareUrl.pathname}${shareUrl.search}${shareUrl.hash}`);
+  shareLinkInput.value = shareUrl.toString();
+  copyLinkButton.disabled = !trimmedRoomId;
+}
+
+function getInitialRoomId() {
+  const roomFromUrl = new URL(window.location.href).searchParams.get("room");
+
+  if (roomFromUrl && roomFromUrl.trim()) {
+    return roomFromUrl.trim();
+  }
+
+  return createRoomId();
+}
+
+function createRoomId() {
+  return `room-${createRandomToken(6)}`;
+}
+
+function createRandomToken(length) {
+  if (window.crypto && window.crypto.getRandomValues) {
+    const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+    const values = new Uint8Array(length);
+    window.crypto.getRandomValues(values);
+
+    return Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
+  }
+
+  return Math.random().toString(36).slice(2, 2 + length);
+}
+
+function resolveSignalingServerUrl() {
+  const currentUrl = new URL(window.location.href);
+  const configuredUrl =
+    currentUrl.searchParams.get("backend") || runtimeConfig.signalingServerUrl;
+
+  if (configuredUrl) {
+    return stripTrailingSlash(configuredUrl);
+  }
+
+  if (isLocalDevelopmentHost()) {
+    return "http://localhost:3000";
+  }
+
+  if (window.location.hostname.endsWith("github.io")) {
+    return DEFAULT_REMOTE_SIGNALING_URL;
+  }
+
+  return stripTrailingSlash(window.location.origin);
+}
+
+function resolveRtcConfiguration() {
+  const configuredRtc = runtimeConfig.rtcConfiguration || {};
+
+  if (Array.isArray(configuredRtc.iceServers) && configuredRtc.iceServers.length > 0) {
+    return configuredRtc;
+  }
+
+  return {
+    ...configuredRtc,
+    iceServers: DEFAULT_ICE_SERVERS
+  };
+}
+
+function isLocalDevelopmentHost() {
+  return (
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+  );
+}
+
+function stripTrailingSlash(value) {
+  return String(value || "").replace(/\/+$/, "");
 }
