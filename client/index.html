@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Room</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="card">
+        <p class="eyebrow">WebRTC Voice Chat</p>
+        <h1>Join a room and start talking.</h1>
+        <p class="intro">
+          Open the same room on another device or browser tab to test the call.
+        </p>
+
+        <form id="join-form" class="controls">
+          <label for="room-input">Room name</label>
+          <input
+            id="room-input"
+            name="room"
+            type="text"
+            maxlength="40"
+            placeholder="demo-room"
+            autocomplete="off"
+            required
+          />
+
+          <div class="button-row">
+            <button id="join-button" type="submit">Join Call</button>
+            <button id="mute-button" type="button" class="secondary" disabled>
+              Mute
+            </button>
+            <button id="leave-button" type="button" class="secondary" disabled>
+              Leave
+            </button>
+          </div>
+        </form>
+
+        <section class="status-panel">
+          <p class="status-label">Status</p>
+          <p id="status-text">Ready to join a room.</p>
+        </section>
+
+        <section class="stats-grid">
+          <article class="stat-card">
+            <span>Room</span>
+            <strong id="current-room">Not connected</strong>
+          </article>
+          <article class="stat-card">
+            <span>Participants</span>
+            <strong id="participant-count">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>Microphone</span>
+            <strong id="mic-status">Off</strong>
+          </article>
+        </section>
+
+        <section class="participants-section">
+          <div class="participants-header">
+            <div>
+              <h2>Live audio</h2>
+              <p id="participant-summary">No one else is in the room yet.</p>
+            </div>
+          </div>
+
+          <div id="participants" class="participants">
+            <article class="participant self" id="self-card">
+              <div>
+                <h3>You</h3>
+                <p id="self-state">Not connected</p>
+              </div>
+            </article>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script
+      src="https://cdn.socket.io/4.8.1/socket.io.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script src="./script.js"></script>
+  </body>
+</html>
