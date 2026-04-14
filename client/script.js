@@ -12,6 +12,7 @@ const DEFAULT_ICE_SERVERS = [
 const runtimeConfig = window.VOICE_CHAT_CONFIG || {};
 const SIGNALING_SERVER_URL = resolveSignalingServerUrl();
 const RTC_CONFIGURATION = resolveRtcConfiguration();
+const HAS_TURN_SERVER = hasTurnServer(RTC_CONFIGURATION);
 
 const joinForm = document.getElementById("join-form");
 const roomInput = document.getElementById("room-input");
@@ -279,6 +280,37 @@ function createPeerConnection(userId) {
     attachRemoteStream(userId, stream);
   };
 
+  peerConnection.oniceconnectionstatechange = () => {
+    const state = peerConnection.iceConnectionState;
+
+    if (state === "checking") {
+      ensureParticipantCard(userId, getConnectingMessage());
+      return;
+    }
+
+    if (state === "connected" || state === "completed") {
+      ensureParticipantCard(userId, "Audio route established");
+      return;
+    }
+
+    if (state === "failed") {
+      ensureParticipantCard(userId, getFailureMessage());
+      setStatus(getFailureStatusMessage());
+    }
+  };
+
+  peerConnection.onicecandidateerror = (event) => {
+    console.error("ICE candidate error:", event);
+
+    if (!HAS_TURN_SERVER) {
+      return;
+    }
+
+    setStatus(
+      "TURN relay is configured, but the browser could not use it. Recheck TURN URL, username, credential, and TLS/port settings."
+    );
+  };
+
   peerConnection.onconnectionstatechange = () => {
     const state = peerConnection.connectionState;
 
@@ -293,13 +325,8 @@ function createPeerConnection(userId) {
     }
 
     if (state === "failed") {
-      ensureParticipantCard(
-        userId,
-        "Connection failed. If this keeps happening, add a TURN server."
-      );
-      setStatus(
-        "Audio connected poorly on this network. Add TURN relay settings in client/config.js or Render environment variables if calls still fail."
-      );
+      ensureParticipantCard(userId, getFailureMessage());
+      setStatus(getFailureStatusMessage());
       return;
     }
 
@@ -654,6 +681,37 @@ function resolveRtcConfiguration() {
     ...configuredRtc,
     iceServers: DEFAULT_ICE_SERVERS
   };
+}
+
+function hasTurnServer(configuration) {
+  const iceServers = Array.isArray(configuration?.iceServers)
+    ? configuration.iceServers
+    : [];
+
+  return iceServers.some((server) => {
+    const urls = Array.isArray(server?.urls) ? server.urls : [server?.urls];
+    return urls.some((url) => String(url || "").trim().toLowerCase().startsWith("turn:"));
+  });
+}
+
+function getConnectingMessage() {
+  return HAS_TURN_SERVER ? "Connecting audio through network relay..." : "Connecting audio...";
+}
+
+function getFailureMessage() {
+  if (HAS_TURN_SERVER) {
+    return "Connection failed. Check the TURN relay settings.";
+  }
+
+  return "Connection failed. Add a TURN server for different networks.";
+}
+
+function getFailureStatusMessage() {
+  if (HAS_TURN_SERVER) {
+    return "Audio could not connect even with TURN enabled. Verify the TURN server URL, username, credential, and whether the relay allows your deployed origin.";
+  }
+
+  return "Audio is failing across networks because this deployment is using STUN only. Add TURN relay settings in client/config.js or Render environment variables.";
 }
 
 function isLocalDevelopmentHost() {

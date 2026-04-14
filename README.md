@@ -77,6 +77,8 @@ This is now the simplest deployment path because Render can host the Socket.IO b
    - `TURN_USERNAME=YOUR_USERNAME`
    - `TURN_CREDENTIAL=YOUR_PASSWORD`
 
+If your users join from different mobile data/Wi-Fi networks, these TURN variables are not really optional for reliable audio. STUN alone often works only when both peers can reach each other directly.
+
 When the app is served from Render, the frontend automatically connects back to the same origin, so you do not need to hard-code the backend URL anymore.
 
 ## Deploy the frontend with GitHub Pages
@@ -85,10 +87,11 @@ GitHub Pages is still optional if you want a separate static frontend.
 
 1. Open `client/config.js`.
 2. Set `signalingServerUrl` to your live backend, for example `https://voice-chat-7ryk.onrender.com`.
-3. Commit and push your changes to GitHub.
-4. In your GitHub repository, open **Settings > Pages** and set the source to **GitHub Actions**.
-5. Push to the `main` branch.
-6. The included workflow publishes the `client/` folder to GitHub Pages automatically.
+3. If calls should work across different networks, also set `rtcConfiguration.iceServers` with a TURN server in `client/config.js`.
+4. Commit and push your changes to GitHub.
+5. In your GitHub repository, open **Settings > Pages** and set the source to **GitHub Actions**.
+6. Push to the `main` branch.
+7. The included workflow publishes the `client/` folder to GitHub Pages automatically.
 
 Your site URL will look like this:
 
@@ -112,3 +115,5 @@ The Socket.IO server only handles signaling messages. The voice audio itself doe
 
 - If the room connects but you still cannot hear the other person, first press Play on the participant card in case autoplay was blocked by the browser.
 - If calls only fail on some networks, add TURN server credentials. STUN-only setups often fail across stricter Wi-Fi or mobile networks because browsers cannot always reach each other directly.
+- If the UI says `Connection failed. Add a TURN server for different networks.`, your signaling server is reachable, but the browsers could not form a direct media path. Configure TURN on Render or in `client/config.js`.
+- If the UI says `Check the TURN relay settings.`, TURN is present but the relay details are wrong or unreachable. Double-check the TURN host, port, username, password, and whether you need `turns:` instead of `turn:`.
